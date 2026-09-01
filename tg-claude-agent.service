@@ -1,0 +1,24 @@
+# Adjust User=, HOME=, and the three paths for your deployment.
+# Assumes user "ubuntu" with the repo cloned at ~/tg-claude-agent.
+[Unit]
+Description=Telegram Claude Code Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Environment=HOME=/home/ubuntu
+Environment=NODE_ENV=production
+WorkingDirectory=/home/ubuntu/tg-claude-agent
+EnvironmentFile=/home/ubuntu/tg-claude-agent/.env
+ExecStart=/usr/bin/node /home/ubuntu/tg-claude-agent/src/index.js
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+# Only kill the node process on stop/restart — leave detached dev servers /
+# tunnels (started via scripts/daemon.sh with setsid) running.
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

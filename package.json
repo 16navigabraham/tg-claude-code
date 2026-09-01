@@ -1,0 +1,24 @@
+{
+  "name": "tg-claude-agent",
+  "version": "1.0.0",
+  "description": "Run Claude Code from Telegram — agentic sessions, approval gate, GitHub, tunnels, voice, from your phone",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5",
+    "playwright": "^1.49.1"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/16navigabraham/tg-claude-code.git"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

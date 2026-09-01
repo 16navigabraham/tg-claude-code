@@ -1,0 +1,21 @@
+# secrets / local config
+.env
+.env.local
+
+# dependencies
+node_modules/
+
+# runtime data
+data/
+sessions/
+*.db
+*.db-shm
+*.db-wal
+
+# logs
+*.log
+npm-debug.log*
+
+# OS junk
+.DS_Store
+Thumbs.db
