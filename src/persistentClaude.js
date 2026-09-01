@@ -3,7 +3,7 @@
 // Anthropic's prompt cache across turns, which is the main reason the bot
 // burned the usage limit faster than interactive Claude Code.
 //
-// Opt-in: PERSISTENT_CLAUDE=1. Subscription path only — the AgentRouter
+// Opt-in: PERSISTENT_CLAUDE=1. Subscription path only — the fallback
 // fallback stays one-shot.
 //
 // UNVERIFIED against a live CLI at build time:

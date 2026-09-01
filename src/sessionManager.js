@@ -63,18 +63,18 @@ export function newSession(name, emoji) {
   // cross-provider 400 error: a session's conversation history must never be
   // resumed under a different provider than the one that produced it.
   const claude_session_dir = path.join(base, 'claude-state');
-  const agentrouter_session_dir = path.join(base, 'agentrouter-state');
+  const fallback_session_dir = path.join(base, 'fallback-state');
 
   fs.mkdirSync(working_dir, { recursive: true });
   fs.mkdirSync(claude_session_dir, { recursive: true });
-  fs.mkdirSync(agentrouter_session_dir, { recursive: true });
+  fs.mkdirSync(fallback_session_dir, { recursive: true });
 
   createSession({
     id,
     name,
     working_dir,
     claude_session_dir,
-    agentrouter_session_dir,
+    fallback_session_dir,
     emoji: emoji || pickEmoji(id),
   });
   return getSessionByName(name);
@@ -134,7 +134,7 @@ export function killSession(name) {
   // still findable by name for /purge later, and so a name can't silently
   // collide with in-progress work.
   fs.rmSync(session.claude_session_dir, { recursive: true, force: true });
-  fs.rmSync(session.agentrouter_session_dir, { recursive: true, force: true });
+  fs.rmSync(session.fallback_session_dir, { recursive: true, force: true });
   archiveSession(session.id);
   return session;
 }
@@ -152,7 +152,7 @@ export function renewSession(name) {
   const session = resolveSession(name);
   dropPersistentRuntime(session.id); // a live process would just keep --resume-ing the old chat
   fs.rmSync(session.claude_session_dir, { recursive: true, force: true });
-  fs.rmSync(session.agentrouter_session_dir, { recursive: true, force: true });
+  fs.rmSync(session.fallback_session_dir, { recursive: true, force: true });
   clearCliSessionIds(session.id);
   return session;
 }

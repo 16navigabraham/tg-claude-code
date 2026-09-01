@@ -7,17 +7,19 @@ Read this before changing `src/providerRouter.js` or `src/persistentClaude.js`
 
 ## The core design constraint — provider isolation
 
-**The bug this design exists to prevent:** running Claude Code through an
-Anthropic-API-compatible proxy (whose request/response shapes aren't
-byte-identical to the real API), then resuming that same conversation under
-the real subscription, causes an **HTTP 400** — the real API validates the
-*entire* accumulated transcript, and one proxy-shaped turn poisons the whole
-thing.
+The subscription and the fallback API key each accumulate their own Claude
+Code transcript. Resuming one credential's conversation under the other is a
+correctness hazard: the real API validates the *entire* accumulated
+transcript on resume, so if the fallback is ever pointed at a proxy whose
+request/response shapes aren't byte-identical, a single fallback-produced
+turn resumed under the real API returns **HTTP 400** for the whole request.
+Keeping the two credentials on fully separate `--resume` chains sidesteps it
+regardless of what the fallback endpoint is.
 
 How it's prevented (all in `src/providerRouter.js`):
 
 1. **Two state dirs per session**, chosen per spawn via `CLAUDE_CONFIG_DIR`:
-   `claude-state` (subscription only), `agentrouter-state` (fallback proxy
+   `claude-state` (subscription only), `fallback-state` (fallback API key
    only). Never shared.
 2. Each provider only ever `--resume`s its **own** `*_cli_session_id`. Never
    crossed.
@@ -27,9 +29,8 @@ How it's prevented (all in `src/providerRouter.js`):
    Claude Code transcript. The same seeding happens on the first subscription
    turn after a fallback period (recovery), keyed off `*_cli_session_id`
    being `null`.
-4. Recovery always spawns against `claude-state`; a proxy-shaped turn never
-   reaches the real Anthropic API.
-5. Proxy env vars (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`,
+4. Recovery always spawns against `claude-state`; a fallback-produced turn never reaches the subscription’s transcript.
+5. The fallback env vars (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`,
    `ANTHROPIC_MODEL`) are injected into the fallback subprocess's env only —
    the subscription spawn's env has zero Anthropic vars and relies purely on
    the OAuth credentials file.
@@ -53,9 +54,9 @@ reintroduces exactly this bug.
   different sessions run in parallel); chunks the reply to Telegram's 4096-char
   limit; deletes the status message. `friendlyError()` maps error classes
   (cancelled / interrupted / stalled / max-runtime / not-logged-in /
-  rate-limited / proxy-405 / unconfigured-fallback) to plain-language replies.
+  rate-limited / fallback-failed / unconfigured-fallback) to plain-language replies.
 - **`providerRouter.js`** — `routePrompt(session, prompt, {onProgress})`:
-  subscription first (unless `FORCE_AGENTROUTER=1`), fallback proxy on a
+  subscription first (unless `FORCE_FALLBACK=1`), fallback API key on a
   detected rate limit. `runClaudeSubprocess` spawns
   `claude -p --output-format stream-json --verbose --permission-mode <mode>
   [--model X] [--max-turns N] [--strict-mcp-config] [--resume <id>]` with the
@@ -192,12 +193,13 @@ narrative version grouped by concern.
   `approvals.js`/`approvalServer.js` above). `APPROVAL_FALLBACK` (allow|deny)
   decides what happens if the bot is unreachable when a prompt fires.
 
-**Fallback provider (Anthropic-API-compatible proxy):**
-`AGENTROUTER_BASE_URL`, `AGENTROUTER_AUTH_TOKEN`, `AGENTROUTER_MODEL`,
-`FORCE_AGENTROUTER=1` (skip the subscription entirely, for testing the
-fallback path). `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` is set
-automatically on the fallback spawn — some proxies don't implement the
-count-tokens preflight Claude Code normally makes and 405 on it mid-task.
+**Fallback provider:** `FALLBACK_ANTHROPIC_API_KEY` (an Anthropic API key
+from console.anthropic.com — set this to enable the fallback),
+`FALLBACK_ANTHROPIC_MODEL` (default `claude-sonnet-4-5`),
+`FALLBACK_ANTHROPIC_BASE_URL` (defaults to `https://api.anthropic.com`; only
+set it for an API-compatible proxy), `FORCE_FALLBACK=1` (always use the
+fallback, for testing). `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` is set
+on the fallback spawn.
 
 **Misc:** `TZ` (passed into every spawn so Claude's own timestamped messages,
 like rate-limit reset times, aren't UTC-only), `PREVIEW_PORT`/

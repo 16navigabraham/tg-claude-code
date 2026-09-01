@@ -115,8 +115,8 @@ USING IT
   are prefixed [session-name] so you can trace which is which.
 
   A long task shows a live "⚙️ Working — <current step>" line. If the
-  subscription hits its usage limit, the bot retries via AgentRouter and
-  tags the reply [via AgentRouter fallback].`;
+  subscription hits its usage limit, the bot retries via the fallback
+  Anthropic API key (if set) and tags the reply [via fallback API].`;
 
 // Serialise prompts per session: concurrent `claude --resume` runs against the
 // same session dir can corrupt its transcript, and out-of-order replies are
@@ -184,16 +184,13 @@ function friendlyError(err) {
     return 'Claude subscription auth has lapsed. SSH into the VPS and run `claude login` (or `claude setup-token` for a long-lived token).';
   }
   if (err.isRateLimit || /rate[ _]limit|\b429\b|quota|usage limit|overloaded/i.test(m)) {
-    return "Claude subscription hit its usage limit. I'll DM you the moment it resets — or retry later yourself, or set up AgentRouter as a fallback.";
+    return "Claude subscription hit its usage limit. I'll DM you the moment it resets — or retry later yourself, or set FALLBACK_ANTHROPIC_API_KEY for automatic failover.";
   }
-  if (/\b405\b/.test(m) && err.provider === 'agentrouter') {
-    return "AgentRouter rejected this request (HTTP 405 — it can't handle this task type). Your subscription is likely rate-limited right now; wait for the reset and retry.";
+  if (/Fallback not configured/i.test(m)) {
+    return "Subscription is rate-limited and no fallback is set. Add FALLBACK_ANTHROPIC_API_KEY to .env for automatic failover, or wait for the reset (I'll DM you).";
   }
-  if (err.provider === 'agentrouter' && /no available channel|无可用渠道|\b503\b/i.test(m)) {
-    return 'AgentRouter has no capacity for any of its models right now, and your Claude subscription is rate-limited. Nothing to do but wait for the subscription window to reset (a few hours), or lower usage with CLAUDE_STRICT_MCP=1.';
-  }
-  if (/AgentRouter fallback is not configured/i.test(m)) {
-    return 'Subscription failed and AgentRouter isn\'t configured. Fill AGENTROUTER_* in .env, or wait for the subscription to recover.';
+  if (err.provider === 'fallback') {
+    return `The fallback Anthropic API also failed: ${err.message}`;
   }
   return `Error${err.provider ? ` (${err.provider})` : ''}: ${err.message}`;
 }
@@ -255,7 +252,7 @@ async function deliver(ctx, promptText) {
     });
 
     if (contextTokens) setSessionContextTokens(active.id, contextTokens);
-    let suffix = provider === 'agentrouter' ? '\n\n[via AgentRouter fallback]' : '';
+    let suffix = provider === 'fallback' ? '\n\n[via fallback API]' : '';
     if (stoppedEarly) {
       suffix += `\n\n⏸ Paused at the ${MAX_TURNS_INFO}-step limit (keeps runaway usage in check). Reply "continue" to carry on.`;
     }
@@ -621,7 +618,7 @@ export function createBot() {
           `Set for this session: /model sonnet  (also opus, haiku, sonnet[1m], full claude-* id)\n` +
           `Reset this session: /model default\n` +
           `Default for ALL new sessions: put CLAUDE_MODEL=sonnet in .env (no per-session /model needed)\n\n` +
-          `Subscription model only — the AgentRouter fallback uses AGENTROUTER_MODEL from .env.`
+          `Subscription model only — the fallback API uses FALLBACK_ANTHROPIC_MODEL from .env.`
       );
     }
     const norm = normalizeModel(arg);

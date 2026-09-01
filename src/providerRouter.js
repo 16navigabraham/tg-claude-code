@@ -253,7 +253,7 @@ function runClaudeSubprocess({
       ...(process.env.TZ ? { TZ: process.env.TZ } : {}), // local time in claude's own messages
       // Isolate per-provider state. Never inherit ANTHROPIC_BASE_URL /
       // ANTHROPIC_AUTH_TOKEN from the parent shell — only inject them
-      // explicitly for the AgentRouter branch, below.
+      // explicitly for the fallback branch, below.
       CLAUDE_CONFIG_DIR: configDir,
       ...extraEnv,
     };
@@ -510,7 +510,7 @@ export function detectRunError({ stdout, stderr, code }, events) {
   return null;
 }
 
-// Only rate-limit / quota / overload conditions should trip the AgentRouter
+// Only rate-limit / quota / overload conditions should trip the fallback
 // fallback. Auth failures, bad flags, crashes, etc. must propagate instead of
 // silently burning fallback credits.
 // NOTE: the exact rate-limit wording Claude Code emits on a real subscription
@@ -518,7 +518,7 @@ export function detectRunError({ stdout, stderr, code }, events) {
 function looksLikeRateLimit(err) {
   if (err.isRateLimit) return true;
   if (err.apiErrorStatus === 429) return true;
-  // These are not rate limits — don't fall back to AgentRouter.
+  // These are not rate limits — don't fall back.
   if (['STALLED', 'MAX_RUNTIME', 'CANCELLED', 'INTERRUPTED'].includes(err.message)) return false;
   const msg = `${err.message || ''} ${err.stderr || ''} ${err.resultText || ''}`.toLowerCase();
   return (
@@ -570,16 +570,16 @@ export async function routePrompt(session, userPrompt, { onProgress } = {}) {
   const priorHistory = getRecentPlainHistory(session.id, 20);
   logMessage({ session_id: session.id, role: 'user', content: userPrompt });
 
-  // FORCE_AGENTROUTER=1 skips the subscription entirely — for testing the
+  // FORCE_FALLBACK=1 skips the subscription entirely — for testing the
   // fallback path without waiting to hit a real rate limit.
-  const forceFallback = !!process.env.FORCE_AGENTROUTER;
+  const forceFallback = !!process.env.FORCE_FALLBACK;
 
   // --- Primary: subscription auth, isolated config dir, no proxy env at all ---
   ensureSubscriptionAuth(session.claude_session_dir);
   if (!forceFallback) {
     try {
       // Cold subscription session but a conversation already happened (e.g. on
-      // AgentRouter) → carry it over as plain text.
+      // the fallback API) → carry it over as plain text.
       const seed = session.claude_cli_session_id ? '' : buildSeedPrefix(priorHistory);
       const model = session.model || DEFAULT_MODEL; // /model override → CLAUDE_MODEL → plan default
       const subEnv = subscriptionEnv(); // /reauth token, else the credentials symlink
@@ -617,57 +617,45 @@ export async function routePrompt(session, userPrompt, { onProgress } = {}) {
     }
   }
 
-  // --- Fallback: AgentRouter, separate config dir, branch not resume ---
-  if (!process.env.AGENTROUTER_BASE_URL || !process.env.AGENTROUTER_AUTH_TOKEN) {
+  // --- Fallback: a separate Anthropic API key, when the subscription is
+  // rate-limited. Separate config dir + a fresh branch (never resumes the
+  // subscription transcript) so the two never mix. Injects ANTHROPIC_* into
+  // THIS subprocess only. Base URL defaults to the real API; point it
+  // elsewhere only if you're using an API-compatible proxy.
+  const fbKey = process.env.FALLBACK_ANTHROPIC_API_KEY;
+  if (!fbKey) {
     throw new Error(
-      'AgentRouter fallback is not configured — set AGENTROUTER_BASE_URL and AGENTROUTER_AUTH_TOKEN in .env'
+      'Fallback not configured — set FALLBACK_ANTHROPIC_API_KEY in .env ' +
+        '(an Anthropic API key from console.anthropic.com), or wait for the subscription to recover.'
     );
   }
-  // Seed plain-text history until we have an AgentRouter session id to --resume.
-  // (A previous failed run may have left files in the dir without ever storing
-  // an id, so key off the id, not dir emptiness.)
-  const promptToSend = session.agentrouter_cli_session_id
+  const fbBaseUrl = (process.env.FALLBACK_ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/+$/, '');
+  const fbModel = process.env.FALLBACK_ANTHROPIC_MODEL || 'claude-sonnet-4-5';
+
+  // Seed plain-text history on the first fallback turn (nothing to --resume yet).
+  const promptToSend = session.fallback_cli_session_id
     ? userPrompt
     : buildSeedPrefix(priorHistory) + userPrompt;
 
-  // AgentRouter's free `default` group often has no channel for a given model
-  // ("无可用渠道" / 503). Try each configured model in turn before giving up.
-  // Comma-separated is allowed so a proxy with flaky per-model capacity can be
-  // given several ids to try in order. A real api.anthropic.com key just needs one.
-  const arModels = (process.env.AGENTROUTER_MODEL || 'claude-sonnet-4-5')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const baseUrl = (process.env.AGENTROUTER_BASE_URL || '').replace(/\/+$/, '');
+  const { text, contextTokens, stoppedEarly } = await runProvider({
+    session,
+    provider: 'fallback',
+    prompt: promptToSend,
+    configDir: session.fallback_session_dir,
+    resumeId: session.fallback_cli_session_id || null,
+    extraEnv: {
+      ANTHROPIC_BASE_URL: fbBaseUrl,
+      ANTHROPIC_AUTH_TOKEN: fbKey,
+      ANTHROPIC_MODEL: fbModel,
+      // Some API-compatible proxies don't implement the count-tokens preflight.
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+    },
+    onProgress,
+  });
 
-  let arErr;
-  for (const arModel of arModels) {
-    try {
-      const { text, contextTokens, stoppedEarly } = await runProvider({
-        session,
-        provider: 'agentrouter',
-        prompt: promptToSend,
-        configDir: session.agentrouter_session_dir,
-        resumeId: session.agentrouter_cli_session_id || null,
-        extraEnv: {
-          ANTHROPIC_BASE_URL: baseUrl,
-          ANTHROPIC_AUTH_TOKEN: process.env.AGENTROUTER_AUTH_TOKEN,
-          ANTHROPIC_MODEL: arModel,
-          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
-        },
-        onProgress,
-      });
-      logMessage({ session_id: session.id, role: 'assistant', content: text, provider_used: 'agentrouter' });
-      touchSession(session.id, 'agentrouter');
-      return { text, provider: 'agentrouter', contextTokens, stoppedEarly };
-    } catch (err) {
-      arErr = err;
-      const sig = `${err.message || ''} ${err.resultText || ''}`;
-      // Only cycle models on "no channel for this model" / 503; anything else is real.
-      if (!/no available channel|无可用渠道|\b503\b/i.test(sig)) throw err;
-    }
-  }
-  throw arErr;
+  logMessage({ session_id: session.id, role: 'assistant', content: text, provider_used: 'fallback' });
+  touchSession(session.id, 'fallback');
+  return { text, provider: 'fallback', contextTokens, stoppedEarly };
 }
 
 // Fire a trivial subscription prompt in a throwaway config dir to check auth —

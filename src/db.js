@@ -14,10 +14,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   name TEXT UNIQUE,
   working_dir TEXT NOT NULL,
   claude_session_dir TEXT NOT NULL,
-  agentrouter_session_dir TEXT NOT NULL,
+  fallback_session_dir TEXT NOT NULL,
   active_provider TEXT DEFAULT 'claude',
   claude_cli_session_id TEXT,        -- Claude Code's own session id for the subscription-side conversation (for --resume)
-  agentrouter_cli_session_id TEXT,   -- ditto for the AgentRouter-side conversation
+  fallback_cli_session_id TEXT,   -- ditto for the fallback-provider-side conversation
   created_at TEXT DEFAULT (datetime('now')),
   last_active TEXT DEFAULT (datetime('now'))
 );
@@ -55,8 +55,8 @@ CREATE TABLE IF NOT EXISTS inflight (
   if (!cols.includes('claude_cli_session_id')) {
     db.exec(`ALTER TABLE sessions ADD COLUMN claude_cli_session_id TEXT`);
   }
-  if (!cols.includes('agentrouter_cli_session_id')) {
-    db.exec(`ALTER TABLE sessions ADD COLUMN agentrouter_cli_session_id TEXT`);
+  if (!cols.includes('fallback_cli_session_id')) {
+    db.exec(`ALTER TABLE sessions ADD COLUMN fallback_cli_session_id TEXT`);
   }
   if (!cols.includes('model')) {
     db.exec(`ALTER TABLE sessions ADD COLUMN model TEXT`); // subscription --model override; null = plan default
@@ -80,13 +80,13 @@ export function createSession({
   name,
   working_dir,
   claude_session_dir,
-  agentrouter_session_dir,
+  fallback_session_dir,
   emoji,
 }) {
   db.prepare(`
-    INSERT INTO sessions (id, name, working_dir, claude_session_dir, agentrouter_session_dir, emoji)
+    INSERT INTO sessions (id, name, working_dir, claude_session_dir, fallback_session_dir, emoji)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(id, name, working_dir, claude_session_dir, agentrouter_session_dir, emoji || null);
+  `).run(id, name, working_dir, claude_session_dir, fallback_session_dir, emoji || null);
 }
 
 export function setSessionEmoji(id, emoji) {
@@ -122,7 +122,7 @@ export function archiveSession(id) {
 // working_dir — the actual project files, git clone, node_modules stay put.
 export function clearCliSessionIds(id) {
   db.prepare(
-    `UPDATE sessions SET claude_cli_session_id = NULL, agentrouter_cli_session_id = NULL, context_tokens = NULL WHERE id = ?`
+    `UPDATE sessions SET claude_cli_session_id = NULL, fallback_cli_session_id = NULL, context_tokens = NULL WHERE id = ?`
   ).run(id);
 }
 
@@ -133,10 +133,10 @@ export function touchSession(id, provider) {
 }
 
 // Record Claude Code's own conversation id for one provider so the next turn
-// on that provider can `--resume` it. `provider` is 'claude' or 'agentrouter'.
+// on that provider can `--resume` it. `provider` is 'claude' or 'fallback'.
 export function setCliSessionId(id, provider, cliSessionId) {
   const col =
-    provider === 'agentrouter' ? 'agentrouter_cli_session_id' : 'claude_cli_session_id';
+    provider === 'fallback' ? 'fallback_cli_session_id' : 'claude_cli_session_id';
   db.prepare(`UPDATE sessions SET ${col} = ? WHERE id = ?`).run(cliSessionId, id);
 }
 
