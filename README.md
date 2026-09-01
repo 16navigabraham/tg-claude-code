@@ -2,8 +2,8 @@
 
 <p align="center">
   <b>Run <a href="https://claude.com/claude-code">Claude Code</a> from Telegram.</b><br>
-  Full agentic sessions — approval gate, live progress, GitHub, public tunnels,
-  voice input — driven from your phone instead of a terminal.
+  Full agentic sessions - approval gate, live progress, GitHub, public tunnels,
+  voice input - driven from your phone instead of a terminal.
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  ⭐ <b>If this is useful, star the repo</b> — it's the whole thank-you.
+  ⭐ <b>If this is useful, star the repo</b> - it's the whole thank-you.
 </p>
 
 ---
@@ -28,15 +28,15 @@ fallback, and every isolation rule needed so the two transcripts never mix.
 
 | | |
 |---|---|
-| 🗂️ **Multi-session** | `/new` `/switch` `/kill` — each session is its own working dir + isolated Claude Code state, so unrelated projects never bleed into each other's context. |
+| 🗂️ **Multi-session** | `/new` `/switch` `/kill` - each session is its own working dir + isolated Claude Code state, so unrelated projects never bleed into each other's context. |
 | 🔐 **Real approval gate** | `APPROVAL_GATE=1` → inline Approve / Deny buttons before every write / edit / shell command. The same prompt flow as an interactive terminal, over chat. |
 | 💸 **Cost controls** | `/compact` (Claude summarizes itself), `/renew` (hard reset, keeps files), a `--max-turns` cap on unsupervised iterations, a deny-list for `rm -rf` / force-push / etc., and a context-size nudge before a session gets expensive. |
-| 📡 **Live feedback** | A `⚙️ Working — <current step>` line that updates as the agent works, instead of silence until the final reply. |
-| 🔁 **Fallback API key** | Set `FALLBACK_ANTHROPIC_API_KEY` and the bot auto-fails-over when your subscription is rate-limited — an isolated state dir so the two transcripts never mix ([why](./ARCHITECTURE.md#the-core-design-constraint--provider-isolation)). |
+| 📡 **Live feedback** | A `⚙️ Working - <current step>` line that updates as the agent works, instead of silence until the final reply. |
+| 🔁 **Fallback API key** | Set `FALLBACK_ANTHROPIC_API_KEY` and the bot auto-fails-over when your subscription is rate-limited - an isolated state dir so the two transcripts never mix ([why](./ARCHITECTURE.md#the-core-design-constraint--provider-isolation)). |
 | 🐙 **GitHub-native** | Commits & pushes as your account via `gh`, no Claude co-author trailer. |
-| 🌐 **Public tunnels** | `/tunnel` for one site, or let Claude run its own named background servers/tunnels (`scripts/daemon.sh`) for multi-project sessions — a public `*.trycloudflare.com` URL, nothing loads on your phone. |
+| 🌐 **Public tunnels** | `/tunnel` for one site, or let Claude run its own named background servers/tunnels (`scripts/daemon.sh`) for multi-project sessions - a public `*.trycloudflare.com` URL, nothing loads on your phone. |
 | 🎙️ **Voice & files** | Voice notes → whisper.cpp → prompt. Photos & PDFs → handed to Claude. `/preview` → headless-Chromium screenshot. |
-| 🔑 **Terminal-free auth** | `/reauth` and `/setuptoken` refresh the Claude subscription token from your phone — no SSH needed. |
+| 🔑 **Terminal-free auth** | `/reauth` and `/setuptoken` refresh the Claude subscription token from your phone - no SSH needed. |
 
 ## 🚀 Quick start
 
@@ -53,7 +53,7 @@ cp .env.example .env
 $EDITOR .env   # TELEGRAM_BOT_TOKEN + ALLOWED_TELEGRAM_USER_ID at minimum
 
 node src/index.js
-# In Telegram: /new test, then send a prompt — confirm you get a reply.
+# In Telegram: /new test, then send a prompt - confirm you get a reply.
 ```
 
 Run it as a service so it survives reboots & crashes:
@@ -68,7 +68,7 @@ Optional one-time setup scripts (`scripts/`):
 
 | Script | Enables |
 |---|---|
-| 📸 `preview-setup.sh` | `/preview` — Playwright / Chromium screenshots |
+| 📸 `preview-setup.sh` | `/preview` - Playwright / Chromium screenshots |
 | 🌐 `tunnel-setup.sh` | `/tunnel` + Claude-driven public URLs (cloudflared) |
 | 🐙 `gh-setup.sh` | `git` / `gh` commits & pushes as your GitHub account |
 | 🧹 `cleanup.sh` | reclaim disk (apt/npm caches, old logs, orphaned temp files) |
@@ -84,9 +84,9 @@ Full env-var reference: [`.env.example`](./.env.example) (commented inline) and
 | `/sessions` | list sessions (emoji, provider, model, last active) |
 | `/switch <name>` | change the active session (fuzzy name match) |
 | `/status` | active session: provider, model, context size, running? |
-| `/compact` | Claude summarizes its own conversation — cuts cost, same session |
+| `/compact` | Claude summarizes its own conversation - cuts cost, same session |
 | `/renew [name]` | hard-reset the conversation, keep the session's files |
-| `/kill <name>` | end a session (files kept — `/purge` to delete) |
+| `/kill <name>` | end a session (files kept - `/purge` to delete) |
 | `/archived` · `/purge <name>` · `/disk` | disk-space housekeeping |
 | `/model [name]` | show / set the model for this session |
 | `/emoji [emoji\|all]` | set / backfill the session's tag emoji |
@@ -97,22 +97,22 @@ Full env-var reference: [`.env.example`](./.env.example) (commented inline) and
 | `/approve` · `/deny [id]` | respond to a pending action (`APPROVAL_GATE=1`) |
 | `/reauth <token>` · `/setuptoken` · `/authcode <code>` | manage Claude auth, no terminal |
 
-Send a photo, PDF, or voice note directly — handled automatically. `/help` in
+Send a photo, PDF, or voice note directly - handled automatically. `/help` in
 the bot is the live version of this list.
 
 ## 🛡️ Security model
 
 Runs with `bypassPermissions` by default (a headless box has no TTY to answer
-prompts) — a deny-list (`CLAUDE_DENY`) hard-blocks the footguns regardless of
+prompts) - a deny-list (`CLAUDE_DENY`) hard-blocks the footguns regardless of
 mode: secret files, `rm -rf`, force-push, editing the bot's own repo, `sudo`.
 Set `APPROVAL_GATE=1` for a real per-action approval flow, or
 `CLAUDE_PERMISSION_MODE` to tighten further.
 
-This is **accident / casual-misuse protection, not a hard sandbox** — a
+This is **accident / casual-misuse protection, not a hard sandbox** - a
 determined prompt injection under `bypassPermissions` can still route around
 file-based blocks. Scope every credential you give it (GitHub token, cloud
 keys) to the minimum it needs, and treat the bot as running with your full
-local permissions — because it does.
+local permissions - because it does.
 
 ## 🤝 Contributing
 
@@ -121,6 +121,6 @@ command, open a PR to the command table.
 
 ## 📄 License
 
-MIT — see [LICENSE](./LICENSE).
+MIT - see [LICENSE](./LICENSE).
 
 <p align="center"><sub>Built on <a href="https://claude.com/claude-code">Claude Code</a> · <a href="./ARCHITECTURE.md">Architecture notes</a></sub></p>
