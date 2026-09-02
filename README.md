@@ -32,7 +32,7 @@ fallback, and every isolation rule needed so the two transcripts never mix.
 | 🔐 **Real approval gate** | `APPROVAL_GATE=1` → inline Approve / Deny buttons before every write / edit / shell command. The same prompt flow as an interactive terminal, over chat. |
 | 💸 **Cost controls** | `/compact` (Claude summarizes itself), `/renew` (hard reset, keeps files), a `--max-turns` cap on unsupervised iterations, a deny-list for `rm -rf` / force-push / etc., and a context-size nudge before a session gets expensive. |
 | 📡 **Live feedback** | A `⚙️ Working - <current step>` line that updates as the agent works, instead of silence until the final reply. |
-| 🔁 **Fallback API key** | Set `FALLBACK_ANTHROPIC_API_KEY` and the bot auto-fails-over when your subscription is rate-limited - an isolated state dir so the two transcripts never mix ([why](./ARCHITECTURE.md#the-core-design-constraint--provider-isolation)). |
+| 🔁 **Fallback API key** | Set `FALLBACK_ANTHROPIC_API_KEY` and the bot auto-fails-over when your subscription is rate-limited - an isolated state dir so the two transcripts never mix ([why](./ARCHITECTURE.md#core-design-constraint-provider-isolation)). |
 | 🐙 **GitHub-native** | Commits & pushes as your account via `gh`, no Claude co-author trailer. |
 | 🌐 **Public tunnels** | `/tunnel` for one site, or let Claude run its own named background servers/tunnels (`scripts/daemon.sh`) for multi-project sessions - a public `*.trycloudflare.com` URL, nothing loads on your phone. |
 | 🎙️ **Voice & files** | Voice notes → whisper.cpp → prompt. Photos & PDFs → handed to Claude. `/preview` → headless-Chromium screenshot. |

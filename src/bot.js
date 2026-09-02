@@ -663,15 +663,24 @@ export function createBot() {
 
   const decide = (approve, id, chatId) => resolveApproval({ id, chatId: String(chatId), approve });
 
+  // Keep the chat terminal-clean: delete the user's /approve command and the
+  // bot's ack a few seconds later. The prompt itself is removed by
+  // resolveApproval (unless APPROVAL_KEEP_LOG=1).
+  const ackTransient = async (ctx, text) => {
+    ctx.deleteMessage().catch(() => {});
+    const m = await ctx.reply(text).catch(() => null);
+    if (m) setTimeout(() => ctx.telegram.deleteMessage(ctx.chat.id, m.message_id).catch(() => {}), 4000);
+  };
+
   bot.command('approve', (ctx) => {
     const id = ctx.message.text.split('\n')[0].split(/\s+/)[1];
     const r = decide(true, id, ctx.chat.id);
-    return ctx.reply(r.ok ? `✅ Approved ${r.toolName} in [${r.sessionName}].` : 'No approval request is waiting.');
+    return ackTransient(ctx, r.ok ? `✅ ${r.toolName}` : 'Nothing waiting.');
   });
   bot.command('deny', (ctx) => {
     const id = ctx.message.text.split('\n')[0].split(/\s+/)[1];
     const r = decide(false, id, ctx.chat.id);
-    return ctx.reply(r.ok ? `⛔ Denied ${r.toolName} in [${r.sessionName}].` : 'No approval request is waiting.');
+    return ackTransient(ctx, r.ok ? `⛔ ${r.toolName}` : 'Nothing waiting.');
   });
   bot.action(/^apv:(\d+)$/, (ctx) => {
     const r = decide(true, ctx.match[1], ctx.chat.id);

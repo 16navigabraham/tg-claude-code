@@ -12,6 +12,11 @@ import { getSessionById } from './db.js';
 export const APPROVAL_SOCKET = path.join(os.tmpdir(), `tg-claude-approvals.sock`);
 export const approvalGateOn = () => !!process.env.APPROVAL_GATE;
 
+// By default the 🔐 prompt is DELETED once you answer — like a terminal
+// permission prompt it just vanishes and doesn't clutter the chat. Set
+// APPROVAL_KEEP_LOG=1 to instead leave a "✅ Approved — …" line behind.
+const KEEP_LOG = !!process.env.APPROVAL_KEEP_LOG;
+
 const SERVER_JS = fileURLToPath(new URL('./approvalServer.js', import.meta.url));
 
 // Extra `claude` args to route permission prompts through Telegram.
@@ -82,14 +87,19 @@ function handleConn(sock) {
         /* socket gone */
       }
       if (msgId) {
-        botRef.telegram
-          .editMessageText(
-            chatId,
-            msgId,
-            undefined,
-            `${decision === 'allow' ? '✅ Approved' : '⛔ Denied'} — ${summary}`
-          )
-          .catch(() => {});
+        if (KEEP_LOG) {
+          botRef.telegram
+            .editMessageText(
+              chatId,
+              msgId,
+              undefined,
+              `${decision === 'allow' ? '✅ Approved' : '⛔ Denied'} - ${summary}`
+            )
+            .catch(() => {});
+        } else {
+          // Vanish, like a terminal prompt once answered.
+          botRef.telegram.deleteMessage(chatId, msgId).catch(() => {});
+        }
       }
     };
     const timer = setTimeout(() => respond('deny', 'No response — auto-denied after 15 min.'), 15 * 60 * 1000);
