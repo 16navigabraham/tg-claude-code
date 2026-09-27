@@ -675,12 +675,14 @@ export function createBot() {
   bot.command('approve', (ctx) => {
     const id = ctx.message.text.split('\n')[0].split(/\s+/)[1];
     const r = decide(true, id, ctx.chat.id);
-    return ackTransient(ctx, r.ok ? `✅ ${r.toolName}` : 'Nothing waiting.');
+    const text = r.ok ? `✅ ${r.toolName}` : r.notFound ? `No pending request with id ${id}.` : 'Nothing waiting.';
+    return ackTransient(ctx, text);
   });
   bot.command('deny', (ctx) => {
     const id = ctx.message.text.split('\n')[0].split(/\s+/)[1];
     const r = decide(false, id, ctx.chat.id);
-    return ackTransient(ctx, r.ok ? `⛔ ${r.toolName}` : 'Nothing waiting.');
+    const text = r.ok ? `⛔ ${r.toolName}` : r.notFound ? `No pending request with id ${id}.` : 'Nothing waiting.';
+    return ackTransient(ctx, text);
   });
   bot.action(/^apv:(\d+)$/, (ctx) => {
     const r = decide(true, ctx.match[1], ctx.chat.id);

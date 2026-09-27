@@ -17,6 +17,11 @@ export const approvalGateOn = () => !!process.env.APPROVAL_GATE;
 // APPROVAL_KEEP_LOG=1 to instead leave a "✅ Approved — …" line behind.
 const KEEP_LOG = !!process.env.APPROVAL_KEEP_LOG;
 
+// Same fallback approvalServer.js uses when it can't reach us. Applied here too,
+// so a malformed/unreadable request fails the same way instead of hardcoding
+// 'allow' regardless of what the operator configured.
+const FALLBACK_DECISION = (process.env.APPROVAL_FALLBACK || 'allow').toLowerCase() === 'deny' ? 'deny' : 'allow';
+
 const SERVER_JS = fileURLToPath(new URL('./approvalServer.js', import.meta.url));
 
 // Extra `claude` args to route permission prompts through Telegram.
@@ -61,7 +66,7 @@ function handleConn(sock) {
     try {
       msg = JSON.parse(buf.slice(0, nl));
     } catch {
-      sock.end(JSON.stringify({ decision: 'allow' }) + '\n');
+      sock.end(JSON.stringify({ decision: FALLBACK_DECISION }) + '\n');
       return;
     }
 
@@ -69,7 +74,7 @@ function handleConn(sock) {
     // Single-user bot: the owner's DM chat id === their user id.
     const chatId = process.env.ALLOWED_TELEGRAM_USER_ID;
     if (!botRef || !chatId) {
-      sock.end(JSON.stringify({ decision: 'allow' }) + '\n');
+      sock.end(JSON.stringify({ decision: FALLBACK_DECISION }) + '\n');
       return;
     }
 
@@ -153,17 +158,27 @@ export function startApprovalListener(bot) {
 
 // Called by the bot's /approve and /deny command handlers.
 export function resolveApproval({ id, chatId, approve, alwaysToolName }) {
-  let target = id ? pending.get(Number(id)) : null;
-  if (!target) {
-    // newest pending for this chat
+  let target;
+  if (id) {
+    // An id was explicitly given (typed, or an inline button's callback_data)
+    // — only ever act on THAT request. Do not fall back to "newest pending"
+    // here: if the id is stale (already answered/timed out) or mistyped, that
+    // must surface as "not found", not silently approve/deny a different,
+    // still-live request the caller never named.
+    target = pending.get(Number(id));
+    if (!target) return { ok: false, notFound: true };
+  } else {
+    // No id given — the documented shorthand for "the newest pending request
+    // in this chat".
     for (const [, p] of [...pending].reverse()) {
       if (p.chatId === chatId) {
         target = p;
         break;
       }
     }
+    if (!target) return { ok: false };
   }
-  if (!target || target.chatId !== chatId) return { ok: false };
+  if (target.chatId !== chatId) return { ok: false };
   target.respond(approve ? 'allow' : 'deny', approve ? undefined : 'Denied by operator.');
   return { ok: true, toolName: target.toolName, sessionName: target.sessionName, always: !!alwaysToolName };
 }

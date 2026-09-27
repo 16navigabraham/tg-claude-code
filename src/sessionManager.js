@@ -17,6 +17,7 @@ import {
   getActiveSessionForChat,
 } from './db.js';
 import { dropPersistentRuntime } from './persistentClaude.js';
+import { cancelRun } from './providerRouter.js';
 import { stopTunnel } from './tunnel.js';
 
 const DAEMON_SH = fileURLToPath(new URL('../scripts/daemon.sh', import.meta.url));
@@ -126,9 +127,13 @@ export function currentSession(chatId) {
 
 export function killSession(name) {
   const session = resolveSession(name);
+  // Stop a live run FIRST: otherwise a spawn-per-message `claude` process (or a
+  // persistent one) keeps reading/writing claude_session_dir/fallback_session_dir
+  // while the lines below delete them out from under it.
+  cancelRun(session.id);
+  dropPersistentRuntime(session.id);
   stopTunnel(session.id);
   stopDaemonsUnder(session.working_dir); // dev servers / tunnels Claude started via daemon.sh
-  dropPersistentRuntime(session.id);
   // Free the (small) Claude state dirs now; keep the working dir (code,
   // node_modules, uploads) and the DB row (marked archived) so the session is
   // still findable by name for /purge later, and so a name can't silently
